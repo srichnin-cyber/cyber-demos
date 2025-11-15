@@ -1,0 +1,44 @@
+mappings:
+  - source: "user.phone"
+    target: "phoneField"
+    condition:
+      type: "notNull"
+    defaultValue: "Not provided"
+
+  - source: "order.total"
+    target: "premiumBadge"
+    condition:
+      type: "greaterThan"
+      value: 1000
+    transform: "showPremium"
+
+  - source: "internal.notes"
+    target: "adminNotes"
+    condition:
+      type: "envVar"
+      name: "SHOW_INTERNAL"
+      expected: "true"
+
+  - source: "user.country"
+    target: "regionLabel"
+    condition:
+      type: "equals"
+      field: "user.region"     # compare against another field
+      value: "EU"
+    transform: "toUpperCase"
+
+  - source: "user.name"
+    target: "fullName"
+    # No condition → always mapped
+    # No default → uses raw value (or empty if null)
+  - source: "order.id"
+    target: "vipBadge"
+    condition:
+      and:
+        - type: "equals"
+          field: "user.tier"
+          value: "VIP"
+        - type: "greaterThan"
+          field: "order.total"
+          value: 500
+    #transform: "showVip"

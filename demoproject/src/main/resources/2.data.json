@@ -1,0 +1,12 @@
+{
+  "user": {
+    "name": "Sam",
+    "phone": null,
+    "region": "ASIA",
+    "country": "France",
+    "tier":"VIP"
+  },
+  "order": {
+    "total": 1500
+  }
+}

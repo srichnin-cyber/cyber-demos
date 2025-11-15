@@ -1,0 +1,23 @@
+mappings:
+  - source: "customer.name"
+    target: "fullName"
+    transform: "toUpperCase"
+
+  - source: "order.total"
+    target: "totalAmount"
+    transform:
+      name: "formatCurrency"
+      args:
+        currencySymbol: "$"
+        decimalPlaces: 2
+
+  - source: "metadata.submittedAt"
+    target: "submissionDate"
+    transform:
+      name: "formatDate"
+      args:
+        pattern: "MM/dd/yyyy"
+
+  - source: "customer.email"
+    target: "email"  
+    # No transform = direct copy

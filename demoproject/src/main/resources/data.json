@@ -1,0 +1,12 @@
+{
+  "customer": {
+    "name": "Alice Johnson",
+    "email": "alice.johnson@example.com"
+  },
+  "order": {
+    "total": 1234.567
+  },
+  "metadata": {
+    "submittedAt": "2025-11-14T10:30:00Z"
+  }
+}
