@@ -29,7 +29,3 @@ sections:
             childLastName: "lastName"
             childDob: "dob"
   
-  - sectionId: signature-page
-    type: FREEMARKER
-    templatePath: signature-page.ftl
-    order: 100

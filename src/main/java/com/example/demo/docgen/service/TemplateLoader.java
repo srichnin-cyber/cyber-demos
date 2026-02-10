@@ -478,7 +478,8 @@ public class TemplateLoader {
                                 return yamlMapper.readValue(is, DocumentTemplate.class);
                             }
                         } catch (IOException e) {
-                            log.debug("Failed to parse template from config-server: {}", pathWithExt, e);
+                            log.error("Failed to parse template from config-server: {}", pathWithExt, e);
+                            throw e;
                         }
                     }
                 } catch (IOException e) {
@@ -491,7 +492,7 @@ public class TemplateLoader {
                                 e
                         );
                     }
-                    log.debug("Template {} not found on config-server", pathWithExt);
+                    log.error("Template {} not found on config-server", pathWithExt);
                 }
             }
             
