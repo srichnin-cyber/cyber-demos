@@ -27,6 +27,10 @@ import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
+import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
 
 /**
  * Renderer for AcroForm PDF templates
@@ -347,7 +351,7 @@ public class AcroFormRenderer implements SectionRenderer {
                     
                     // Apply styling if configured
                     if (allFieldStyles.containsKey(fieldName)) {
-                        applyFieldStyling(field, allFieldStyles.get(fieldName));
+                        applyFieldStyling(acroForm, field, allFieldStyles.get(fieldName));
                     }
                 } else {
                     log.warn("Field not found in form: {}", fieldName);
@@ -362,28 +366,58 @@ public class AcroFormRenderer implements SectionRenderer {
      * Apply styling to an AcroForm field
      * Supports font size, colors, alignment, and field properties
      */
-    private void applyFieldStyling(PDField field, FieldStyling styling) {
+    private void applyFieldStyling(PDAcroForm acroForm, PDField field, FieldStyling styling) {
         if (styling == null) {
             return;
         }
         
         try {
-            // Apply font size if specified
-            if (styling.getFontSize() != null) {
-                // Note: PDField doesn't directly expose fontSize, 
-                // it's part of the field's default appearance string
-                log.debug("Font size styling ({}pt) will be applied via appearance stream", styling.getFontSize());
+            // Ensure AcroForm default resources exist
+            PDResources resources = acroForm.getDefaultResources();
+            if (resources == null) {
+                resources = new PDResources();
+                acroForm.setDefaultResources(resources);
             }
-            
-            // Apply text color
+
+            // Choose a PDType1Font based on requested fontName / bold / italic
+            PDFont pdfFont;
+            String fontName = styling.getFontName() != null ? styling.getFontName().toLowerCase() : "helvetica";
+            boolean bold = styling.getBold() != null && styling.getBold();
+            if (fontName.contains("times")) {
+                pdfFont = bold ? PDType1Font.TIMES_BOLD : PDType1Font.TIMES_ROMAN;
+            } else if (fontName.contains("courier")) {
+                pdfFont = bold ? PDType1Font.COURIER_BOLD : PDType1Font.COURIER;
+            } else {
+                // default to Helvetica
+                pdfFont = bold ? PDType1Font.HELVETICA_BOLD : PDType1Font.HELVETICA;
+            }
+
+            // Register font in AcroForm resources and build default appearance (DA)
+            org.apache.pdfbox.cos.COSName fontResName = resources.add(pdfFont);
+            StringBuilder da = new StringBuilder();
+            da.append('/').append(fontResName.getName()).append(' ');
+            if (styling.getFontSize() != null) {
+                da.append(styling.getFontSize());
+            } else {
+                da.append("0");
+            }
+            da.append(" Tf ");
+
+            // Apply text color (append to DA)
             if (styling.getTextColor() != null) {
                 float r = ((styling.getTextColor() >> 16) & 0xFF) / 255.0f;
                 float g = ((styling.getTextColor() >> 8) & 0xFF) / 255.0f;
                 float b = (styling.getTextColor() & 0xFF) / 255.0f;
-                // Note: Text color is typically set via the default appearance stream
+                da.append(String.format("%s %s %s rg", stripTrailingZeros(r), stripTrailingZeros(g), stripTrailingZeros(b)));
                 log.debug("Applied text color [R:{}, G:{}, B:{}] to field: {}", r, g, b, field.getFullyQualifiedName());
+            } else {
+                // default black
+                da.append("0 0 0 rg");
             }
-            
+
+            // Set the default appearance on the field (DA)
+            field.getCOSObject().setString(org.apache.pdfbox.cos.COSName.DA, da.toString());
+
             // Apply background color using COSArray
             if (styling.getBackgroundColor() != null) {
                 float r = ((styling.getBackgroundColor() >> 16) & 0xFF) / 255.0f;
@@ -444,6 +478,20 @@ public class AcroFormRenderer implements SectionRenderer {
         } catch (Exception e) {
             log.error("Failed to apply styling to field {}: {}", field.getFullyQualifiedName(), e.getMessage());
         }
+    }
+
+    // Helper to format floats without scientific notation and strip trailing zeros
+    private static String stripTrailingZeros(float v) {
+        String s = Float.toString(v);
+        if (s.indexOf('E') >= 0 || s.indexOf('e') >= 0) {
+            s = new java.math.BigDecimal(Float.toString(v)).toPlainString();
+        }
+        // remove trailing zeros
+        if (s.indexOf('.') >= 0) {
+            while (s.endsWith("0")) s = s.substring(0, s.length() - 1);
+            if (s.endsWith(".")) s = s.substring(0, s.length() - 1);
+        }
+        return s;
     }
 }
 
