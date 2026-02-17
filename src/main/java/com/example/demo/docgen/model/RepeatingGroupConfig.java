@@ -47,6 +47,25 @@ public class RepeatingGroupConfig {
      * Maximum number of items to map (optional)
      */
     private Integer maxItems;
+    /**
+     * Starting cell for Excel table population (e.g., "Sheet1!A5" or "A5").
+     * When present, the renderer will treat this repeating group as a table
+     * and will map each item's fields to columns starting at this cell.
+     */
+    private String startCell;
+
+    /**
+     * When true, existing rows at the insertion point will be shifted down
+     * to make space for the populated rows. Defaults to false.
+     */
+    private Boolean insertRows;
+
+    /**
+     * When true, cell values will overwrite existing cells; when false, existing
+     * values will be preserved if present. Defaults to true.
+     */
+    @Builder.Default
+    private Boolean overwrite = true;
     
     /**
      * Field mappings for a single item.

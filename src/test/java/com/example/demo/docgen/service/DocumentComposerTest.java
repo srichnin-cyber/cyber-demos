@@ -23,6 +23,7 @@ public class DocumentComposerTest {
     private SectionRenderer mockRenderer;
     private TemplateLoader mockTemplateLoader;
     private com.example.demo.docgen.processor.HeaderFooterProcessor mockHeaderFooterProcessor;
+        private com.example.demo.docgen.service.ExcelOutputService mockExcelOutputService;
 
     @BeforeEach
     public void setup() {
@@ -33,7 +34,8 @@ public class DocumentComposerTest {
         List<SectionRenderer> renderers = Collections.singletonList(mockRenderer);
         List<FieldMappingStrategy> strategies = Collections.singletonList(new JsonPathMappingStrategy());
         
-        composer = new DocumentComposer(renderers, strategies, mockTemplateLoader, mockHeaderFooterProcessor);
+        mockExcelOutputService = mock(com.example.demo.docgen.service.ExcelOutputService.class);
+        composer = new DocumentComposer(renderers, strategies, mockTemplateLoader, mockHeaderFooterProcessor, mockExcelOutputService);
         
         when(mockRenderer.supports(any())).thenReturn(true);
         try {

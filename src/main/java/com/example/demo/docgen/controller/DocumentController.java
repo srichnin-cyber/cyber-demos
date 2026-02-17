@@ -69,6 +69,39 @@ public class DocumentController {
             return new ResponseEntity<>(body, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+    /**
+     * Generate and download filled Excel workbook (XLSX)
+     */
+    @PostMapping("/generate/excel")
+    public ResponseEntity<?> generateExcel(@RequestBody com.example.demo.docgen.model.DocumentGenerationRequest request) {
+        log.info("Received Excel generation request for template: {} from namespace: {}", request.getTemplateId(), request.getNamespace());
+        try {
+            byte[] xlsx = documentComposer.generateExcel(request);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+            headers.setContentDispositionFormData("attachment", "document.xlsx");
+            headers.setContentLength(xlsx.length);
+
+            return new ResponseEntity<>(xlsx, headers, HttpStatus.OK);
+        } catch (com.example.demo.docgen.exception.TemplateLoadingException tle) {
+            String code = tle.getCode();
+            String description = tle.getDescription();
+
+            java.util.Map<String, String> body = new java.util.HashMap<>();
+            body.put("code", code);
+            body.put("description", description);
+
+            if ("TEMPLATE_NOT_FOUND".equals(code)) {
+                return new ResponseEntity<>(body, HttpStatus.NOT_FOUND);
+            } else if ("UNRESOLVED_PLACEHOLDER".equals(code)) {
+                return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+            }
+
+            return new ResponseEntity<>(body, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
     
     /**
      * Health check endpoint

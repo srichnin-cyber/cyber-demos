@@ -47,6 +47,7 @@ public class DocumentComposer {
     private final List<FieldMappingStrategy> mappingStrategies;
     private final TemplateLoader templateLoader;
     private final com.example.demo.docgen.processor.HeaderFooterProcessor headerFooterProcessor;
+    private final com.example.demo.docgen.service.ExcelOutputService excelOutputService;
     
     /**
      * Generate a PDF document from a template and data
@@ -177,6 +178,65 @@ public class DocumentComposer {
         } catch (Exception e) {
             log.error("Document generation failed", e);
             throw new RuntimeException("Failed to generate document", e);
+        }
+    }
+
+    /**
+     * Generate an Excel workbook from a template and data and return XLSX bytes.
+     * The ExcelSectionRenderer stores the filled workbook in the RenderContext metadata under "excelWorkbook".
+     */
+    @LogExecutionTime("Total Excel Generation")
+    public byte[] generateExcel(DocumentGenerationRequest request) {
+        log.info("Generating EXCEL with template: {} from namespace: {}", request.getTemplateId(), request.getNamespace());
+
+        try {
+            DocumentTemplate template;
+            if (request.getNamespace() != null) {
+                template = templateLoader.loadTemplate(request.getNamespace(), request.getTemplateId(), request.getData());
+            } else {
+                template = templateLoader.loadTemplate(request.getTemplateId(), request.getData());
+            }
+
+            RenderContext context = new RenderContext(template, request.getData());
+            String ns = request.getNamespace() != null ? request.getNamespace() : "common-templates";
+            context.setNamespace(ns);
+
+            List<PageSection> sections = new ArrayList<>(template.getSections());
+            sections.sort(Comparator.comparingInt(PageSection::getOrder));
+
+            for (PageSection section : sections) {
+                if (section.getCondition() != null && !section.getCondition().isEmpty()) {
+                    FieldMappingStrategy strategy = findMappingStrategy(section.getMappingType());
+                    Object result = strategy.evaluatePath(context.getData(), section.getCondition());
+                    boolean shouldRender = false;
+                    if (result instanceof Boolean) {
+                        shouldRender = (Boolean) result;
+                    } else if (result != null) {
+                        shouldRender = !result.toString().isEmpty() && !result.toString().equalsIgnoreCase("false");
+                    }
+                    if (!shouldRender) continue;
+                }
+
+                context.setCurrentSectionId(section.getSectionId());
+                SectionRenderer renderer = findRenderer(section.getType());
+                // Render; ExcelSectionRenderer stores workbook in context metadata
+                renderer.render(section, context);
+            }
+
+            Object wbObj = context.getMetadata("excelWorkbook");
+            if (wbObj == null || !(wbObj instanceof org.apache.poi.ss.usermodel.Workbook)) {
+                throw new RuntimeException("No Excel workbook produced by renderers");
+            }
+
+            org.apache.poi.ss.usermodel.Workbook workbook = (org.apache.poi.ss.usermodel.Workbook) wbObj;
+            return excelOutputService.toBytes(workbook);
+
+        } catch (TemplateLoadingException | ResourceLoadingException e) {
+            log.error("Template/resource error during Excel generation", e);
+            throw e;
+        } catch (Exception e) {
+            log.error("Excel generation failed", e);
+            throw new RuntimeException("Failed to generate Excel", e);
         }
     }
 

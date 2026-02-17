@@ -31,17 +31,19 @@ public class NamespaceDocumentComposerTest {
     private SectionRenderer mockRenderer;
     private TemplateLoader mockTemplateLoader;
     private HeaderFooterProcessor mockHeaderFooterProcessor;
+        private com.example.demo.docgen.service.ExcelOutputService mockExcelOutputService;
 
     @BeforeEach
     public void setup() {
         mockRenderer = mock(SectionRenderer.class);
         mockTemplateLoader = mock(TemplateLoader.class);
         mockHeaderFooterProcessor = mock(HeaderFooterProcessor.class);
+                mockExcelOutputService = mock(com.example.demo.docgen.service.ExcelOutputService.class);
         
         List<SectionRenderer> renderers = Collections.singletonList(mockRenderer);
         List<FieldMappingStrategy> strategies = Collections.singletonList(new JsonPathMappingStrategy());
         
-        composer = new DocumentComposer(renderers, strategies, mockTemplateLoader, mockHeaderFooterProcessor);
+        composer = new DocumentComposer(renderers, strategies, mockTemplateLoader, mockHeaderFooterProcessor, mockExcelOutputService);
         
         when(mockRenderer.supports(any())).thenReturn(true);
         try {
