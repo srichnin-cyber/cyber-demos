@@ -7,7 +7,9 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,6 +21,44 @@ public class TemplateLoaderTest {
 
     private final TemplateLoader templateLoader = new TemplateLoader(new NamespaceResolver());
     private final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
+
+    /**
+     * Subclass used to count which loadTemplate overloads are invoked.  This lets
+     * us verify that our new cache-resolution logic chooses the correct method
+     * (cached structural vs variable-aware) based on placeholders and variables.
+     */
+    private static class CountingTemplateLoader extends TemplateLoader {
+        int plainLoads = 0;
+        int variableLoads = 0;
+
+        CountingTemplateLoader(NamespaceResolver ns) {
+            super(ns);
+        }
+
+        @Override
+        public DocumentTemplate loadTemplate(String templateId) {
+            plainLoads++;
+            return super.loadTemplate(templateId);
+        }
+
+        @Override
+        public DocumentTemplate loadTemplate(String templateId, Map<String, Object> variables) {
+            variableLoads++;
+            return super.loadTemplate(templateId, variables);
+        }
+
+        @Override
+        public DocumentTemplate loadTemplate(String namespace, String templateId) {
+            // delegate to plain method; counts as plain load
+            return loadTemplate(templateId);
+        }
+
+        @Override
+        public DocumentTemplate loadTemplate(String namespace, String templateId, Map<String, Object> variables) {
+            // delegate to variable method; counts as variable load
+            return loadTemplate(templateId, variables);
+        }
+    }
 
     @Test
     public void testTemplateInheritanceAndMerging() {
@@ -58,6 +98,23 @@ public class TemplateLoaderTest {
         assertNotNull(template);
         assertEquals("test-inheritance-base", template.getTemplateId());
         assertFalse(template.getSections().isEmpty());
+    }
+
+    @Test
+    public void testShouldUseCacheLogic() {
+        TemplateLoader loader = new TemplateLoader(new NamespaceResolver());
+
+        // no variables and no placeholders -> cache should be used
+        assertTrue(loader.shouldUseCache(Collections.emptyMap(), "simple-base"));
+
+        // presence of a variable map disables cache
+        assertFalse(loader.shouldUseCache(Map.of("foo", "bar"), "simple-base"));
+
+        // placeholder characters in ID disable cache even if vars empty
+        assertFalse(loader.shouldUseCache(Collections.emptyMap(), "base-${env}"));
+
+        // both conditions together also disable
+        assertFalse(loader.shouldUseCache(Map.of("env", "prod"), "base-${env}"));
     }
 }
 

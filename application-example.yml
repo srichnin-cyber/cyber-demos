@@ -1,0 +1,170 @@
+# ============================================================================
+# Example Spring Boot Application Configuration
+# Template Prewarming with Placeholder Variables
+# ============================================================================
+
+spring:
+  application:
+    name: docgen-service
+  profiles:
+    active: dev
+
+# ============================================================================
+# Document Generation Service Configuration
+# ============================================================================
+docgen:
+  templates:
+    # Enable/disable template caching
+    cache-enabled: true
+
+    # ========================================================================
+    # Strategy 1: Simple Template Preloading (default namespace)
+    # ========================================================================
+    preload-ids:
+      - base-enrollment
+      - composite-enrollment
+      - benefit-summary
+
+    # ========================================================================
+    # Strategy 2: Namespace-Specific Template Preloading
+    # ========================================================================
+    preload:
+      tenant-a:
+        - base-enrollment
+        - composite-enrollment
+      tenant-b:
+        - simple-form
+      common-templates:
+        - shared-header
+        - shared-footer
+
+    # ========================================================================
+    # Strategy 3: Prewarming with Placeholder Variables
+    # 
+    # Enables loading templates at startup and resolving placeholders with
+    # specific variable scenarios (e.g., environment variants, tenant defaults).
+    # 
+    # Each scenario will:
+    #   1. Load the template (structural cache)
+    #   2. Deep-copy to preserve cached original
+    #   3. Resolve placeholders with given variables
+    #   4. Preload resources from resolved paths
+    # 
+    # Benefits:
+    #   - Eliminates first-request latency for common scenarios
+    #   - Tests placeholder resolution at startup (fail fast)
+    #   - Cache multiple resolved variants for different environments
+    # ========================================================================
+    prewarming:
+      # Enable/disable prewarming scenarios
+      enabled: true
+
+      scenarios:
+        # ====================================================================
+        # Production Environment Defaults
+        # ====================================================================
+        - name: "Production - Enrollment"
+          templateId: "enrollment-form"
+          namespace: "tenant-a"
+          description: "Production defaults for enrollment form"
+          interpolateFields: true
+          variables:
+            environment: production
+            formType: enrollment
+            version: 2024-prod
+            region: us-east-1
+            isFormRequired: true
+
+        - name: "Production - Benefits"
+          templateId: "benefits-summary"
+          namespace: "tenant-a"
+          description: "Production defaults for benefits summary"
+          interpolateFields: true
+          variables:
+            environment: production
+            formType: benefits
+            version: 2024-prod
+            region: us-east-1
+            isPdfRequired: true
+
+        # ====================================================================
+        # Development Environment Defaults
+        # ====================================================================
+        - name: "Development - Enrollment"
+          templateId: "enrollment-form"
+          namespace: "tenant-a"
+          description: "Development defaults for testing"
+          interpolateFields: true
+          variables:
+            environment: development
+            formType: enrollment
+            version: dev
+            region: local
+            isFormRequired: false
+
+        # ====================================================================
+        # Staging Environment Defaults
+        # ====================================================================
+        - name: "Staging - Enrollment"
+          templateId: "enrollment-form"
+          namespace: "tenant-a"
+          description: "Staging environment for pre-production testing"
+          interpolateFields: true
+          variables:
+            environment: staging
+            formType: enrollment
+            version: 2024-staging
+            region: us-west-2
+            isFormRequired: true
+
+        # ====================================================================
+        # Tenant-Specific Defaults (Tenant B)
+        # ====================================================================
+        - name: "Tenant B - Production"
+          templateId: "simple-form"
+          namespace: "tenant-b"
+          description: "Production for tenant-b"
+          interpolateFields: true
+          variables:
+            environment: production
+            formType: standard
+            version: 2024-prod
+            region: eu-west-1
+            isFormRequired: true
+
+        # ====================================================================
+        # Multi-Region Scenarios
+        # ====================================================================
+        - name: "US East Region Default"
+          templateId: "enrollment-form"
+          namespace: "tenant-a"
+          description: "US East production"
+          variables:
+            environment: production
+            region: us-east-1
+            formType: enrollment
+            version: 2024-prod
+
+        - name: "US West Region Default"
+          templateId: "enrollment-form"
+          namespace: "tenant-a"
+          description: "US West production"
+          variables:
+            environment: production
+            region: us-west-2
+            formType: enrollment
+            version: 2024-prod
+
+        - name: "EU West Region Default"
+          templateId: "enrollment-form"
+          namespace: "tenant-a"
+          description: "EU West production"
+          variables:
+            environment: production
+            region: eu-west-1
+            formType: enrollment
+            version: 2024-prod
+
+logging:
+  level:
+    com.example.demo.docgen: DEBUG

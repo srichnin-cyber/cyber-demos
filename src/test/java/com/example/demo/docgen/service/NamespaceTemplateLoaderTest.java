@@ -88,7 +88,7 @@ public class NamespaceTemplateLoaderTest {
         assertThrows(RuntimeException.class, () -> {
             templateLoader.loadTemplate(
                 "tenant-a", 
-                "non-existent-template.yaml", 
+                "base-enrollmentx.yaml", 
                 new HashMap<>()
             );
         }, "Should throw exception when template not found in specified namespace");

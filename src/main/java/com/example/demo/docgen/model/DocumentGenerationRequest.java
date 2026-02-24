@@ -34,6 +34,19 @@ public class DocumentGenerationRequest {
     private Map<String, Object> data = new HashMap<>();
     
     /**
+     * Template resolution variables (for placeholder interpolation and cache key generation).
+     * Used to construct cache keys for prewarmed template variants.
+     * 
+     * Example: { "environment": "production", "region": "us-east-1" }
+     * 
+     * These variables are different from 'data':
+     * - data: The actual document/form data (applicant info, etc.)
+     * - variables: Template configuration/environment variables (which resources to use)
+     */
+    @Builder.Default
+    private Map<String, Object> variables = new HashMap<>();
+    
+    /**
      * Optional generation options
      */
     @Builder.Default

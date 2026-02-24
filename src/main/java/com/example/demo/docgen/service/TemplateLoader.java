@@ -38,6 +38,39 @@ public class TemplateLoader {
     private final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
     private final RestClient restClient = RestClient.create();
     private final NamespaceResolver namespaceResolver;
+
+    /**
+     * Determine if a resolved template ID can be safely served from the structural
+     * cache instead of going through the variable-aware loader.
+     * We only cache when there are no resolution variables and the ID contains
+     * no placeholder tokens.
+     */
+    /*
+     * Package-private for testing.  Determines whether the loader will attempt to
+     * hit the cached overload instead of the variable-aware recursive path.
+     */
+    boolean shouldUseCache(Map<String, Object> variables, String resolvedId) {
+        if (resolvedId == null) return false;
+        boolean noVars = variables == null || variables.isEmpty();
+        boolean noPlaceholders = !resolvedId.contains("${");
+        return noVars && noPlaceholders;
+    }
+
+    /**
+     * Parse a possibly namespaced identifier of the form "prefix:id" into an
+     * (namespace, id) pair.  The returned namespace will be normalized; caller
+     * may supply a default namespace when prefix is absent.
+     */
+    private java.util.Map.Entry<String,String> parseNamespaceAndId(String candidate, String defaultNamespace) {
+        if (candidate != null && candidate.contains(":")) {
+            String[] parts = candidate.split(":", 2);
+            String prefix = parts[0];
+            String id = parts.length > 1 ? parts[1] : "";
+            String ns = prefix.equals("common") ? namespaceResolver.normalizeNamespace("common-templates") : namespaceResolver.normalizeNamespace(prefix);
+            return new java.util.AbstractMap.SimpleEntry<>(ns, id);
+        }
+        return new java.util.AbstractMap.SimpleEntry<>(defaultNamespace, candidate);
+    }
     
     // ThreadLocal to track templates currently being loaded (for circular reference detection)
     private final ThreadLocal<Set<String>> loadingStack = ThreadLocal.withInitial(HashSet::new);
@@ -167,7 +200,13 @@ public class TemplateLoader {
             if (template.getBaseTemplateId() != null && !template.getBaseTemplateId().isEmpty()) {
                 String baseId = template.getBaseTemplateId();
                 String resolvedBaseId = resolvePlaceholders(baseId, variables);
-                DocumentTemplate baseTemplate = loadTemplate(resolvedBaseId, variables);
+                DocumentTemplate baseTemplate;
+                if (shouldUseCache(variables, resolvedBaseId)) {
+                    // safe to hit structural cache
+                    baseTemplate = loadTemplate(resolvedBaseId);
+                } else {
+                    baseTemplate = loadTemplate(resolvedBaseId, variables);
+                }
                 template = mergeTemplates(baseTemplate, template);
             }
             
@@ -175,11 +214,12 @@ public class TemplateLoader {
             if (template.getIncludedFragments() != null && !template.getIncludedFragments().isEmpty()) {
                 for (String fragmentId : template.getIncludedFragments()) {
                     String resolvedFragmentId = resolvePlaceholders(fragmentId, variables);
-                    // Fragments referenced here are resolved relative to the current
-                    // template if they are simple ids, or can use the "prefix:name"
-                    // syntax to pull from another namespace (handled in
-                    // loadTemplateWithNamespaceContext when dealing with namespaced loads).
-                    DocumentTemplate fragment = loadTemplate(resolvedFragmentId, variables);
+                    DocumentTemplate fragment;
+                    if (shouldUseCache(variables, resolvedFragmentId)) {
+                        fragment = loadTemplate(resolvedFragmentId);
+                    } else {
+                        fragment = loadTemplate(resolvedFragmentId, variables);
+                    }
                     template = mergeTemplates(fragment, template);
                 }
             }
@@ -242,21 +282,36 @@ public class TemplateLoader {
                 String baseId = template.getBaseTemplateId();
                 String resolvedBaseId = resolvePlaceholders(baseId, variables);
                 
-                // Resolve baseTemplate in the same namespace context
-                String baseTemplatePath = resolvedBaseId;
-                // Support cross-namespace prefix syntax like "common:base-enrollment.yaml"
+                // Determine effective namespace and id for potential cache hit
+                String effectiveNamespace = currentNamespace;
+                String effectiveId = resolvedBaseId;
                 if (resolvedBaseId.contains(":")) {
                     String[] parts = resolvedBaseId.split(":", 2);
                     String prefix = parts[0];
                     String remainder = parts.length > 1 ? parts[1] : "";
-                    String mappedNamespace = prefix.equals("common") ? namespaceResolver.normalizeNamespace("common-templates") : namespaceResolver.normalizeNamespace(prefix);
-                    baseTemplatePath = namespaceResolver.resolveTemplatePath(mappedNamespace, remainder);
+                    effectiveId = remainder;
+                    effectiveNamespace = prefix.equals("common") ? namespaceResolver.normalizeNamespace("common-templates") : namespaceResolver.normalizeNamespace(prefix);
+                }
+
+                // Resolve baseTemplate in the same namespace context (path used only for non-cache recursion)
+                String baseTemplatePath = resolvedBaseId;
+                if (resolvedBaseId.contains(":")) {
+                    baseTemplatePath = namespaceResolver.resolveTemplatePath(effectiveNamespace, effectiveId);
                 } else if (currentNamespace != null) {
-                    // Relative reference - resolve in current namespace
                     baseTemplatePath = namespaceResolver.resolveTemplatePath(currentNamespace, resolvedBaseId);
                 }
 
-                DocumentTemplate baseTemplate = loadTemplateWithNamespaceContext(baseTemplatePath, variables, currentNamespace);
+                DocumentTemplate baseTemplate;
+                if (shouldUseCache(variables, resolvedBaseId)) {
+                    // hit structural cache by namespace/id if available
+                    if (effectiveNamespace != null) {
+                        baseTemplate = loadTemplate(effectiveNamespace, effectiveId);
+                    } else {
+                        baseTemplate = loadTemplate(effectiveId);
+                    }
+                } else {
+                    baseTemplate = loadTemplateWithNamespaceContext(baseTemplatePath, variables, currentNamespace);
+                }
                 template = mergeTemplates(baseTemplate, template);
             }
 
@@ -265,21 +320,35 @@ public class TemplateLoader {
                 for (String fragmentId : template.getIncludedFragments()) {
                     String resolvedFragmentId = resolvePlaceholders(fragmentId, variables);
                     
-                    // Resolve fragment in the same namespace context
-                    String fragmentPath = resolvedFragmentId;
-                    // Support cross-namespace prefix syntax like "common:fragment.yaml"
+                    // Determine effective namespace/id for fragment
+                    String effectiveNamespace = currentNamespace;
+                    String effectiveId = resolvedFragmentId;
                     if (resolvedFragmentId.contains(":")) {
                         String[] parts = resolvedFragmentId.split(":", 2);
                         String prefix = parts[0];
                         String remainder = parts.length > 1 ? parts[1] : "";
-                        String mappedNamespace = prefix.equals("common") ? namespaceResolver.normalizeNamespace("common-templates") : namespaceResolver.normalizeNamespace(prefix);
-                        fragmentPath = namespaceResolver.resolveTemplatePath(mappedNamespace, remainder);
+                        effectiveId = remainder;
+                        effectiveNamespace = prefix.equals("common") ? namespaceResolver.normalizeNamespace("common-templates") : namespaceResolver.normalizeNamespace(prefix);
+                    }
+                    
+                    // Resolve fragment in the same namespace context
+                    String fragmentPath = resolvedFragmentId;
+                    if (resolvedFragmentId.contains(":")) {
+                        fragmentPath = namespaceResolver.resolveTemplatePath(effectiveNamespace, effectiveId);
                     } else if (currentNamespace != null) {
-                        // Relative reference - resolve in current namespace
                         fragmentPath = namespaceResolver.resolveTemplatePath(currentNamespace, resolvedFragmentId);
                     }
 
-                    DocumentTemplate fragment = loadTemplateWithNamespaceContext(fragmentPath, variables, currentNamespace);
+                    DocumentTemplate fragment;
+                    if (shouldUseCache(variables, resolvedFragmentId)) {
+                        if (effectiveNamespace != null) {
+                            fragment = loadTemplate(effectiveNamespace, effectiveId);
+                        } else {
+                            fragment = loadTemplate(effectiveId);
+                        }
+                    } else {
+                        fragment = loadTemplateWithNamespaceContext(fragmentPath, variables, currentNamespace);
+                    }
                     template.getSections().addAll(fragment.getSections());
                 }
             }

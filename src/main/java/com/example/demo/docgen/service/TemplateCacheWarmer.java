@@ -1,9 +1,12 @@
 package com.example.demo.docgen.service;
 
+import com.example.demo.docgen.config.PrewarmingConfiguration;
+import com.example.demo.docgen.config.PrewarmingScenario;
 import com.example.demo.docgen.model.DocumentTemplate;
 import com.example.demo.docgen.model.PageSection;
-import lombok.RequiredArgsConstructor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -45,10 +48,16 @@ import java.util.Map;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class TemplateCacheWarmer {
 
     private final TemplateLoader templateLoader;
+
+    /**
+     * Optional: PrewarmingConfiguration for scenarios with placeholder variables.
+     * Can be null if scenarios are not used (legacy configuration only).
+     */
+    @Autowired(required = false)
+    private PrewarmingConfiguration prewarmingConfig;
 
     @Value("${docgen.templates.preload-ids:}")
     private List<String> preloadTemplateIds;
@@ -59,6 +68,12 @@ public class TemplateCacheWarmer {
     @Value("${docgen.templates.cache-enabled:true}")
     private boolean cacheEnabled;
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public TemplateCacheWarmer(TemplateLoader templateLoader) {
+        this.templateLoader = templateLoader;
+    }
+
     @EventListener(ApplicationReadyEvent.class)
     public void warmCache() {
         if (!cacheEnabled) {
@@ -68,8 +83,11 @@ public class TemplateCacheWarmer {
 
         boolean hasSimplePreload = preloadTemplateIds != null && !preloadTemplateIds.isEmpty();
         boolean hasNamespacePreload = preloadNamespaces != null && !preloadNamespaces.isEmpty();
+        boolean hasScenarios = prewarmingConfig != null && prewarmingConfig.isEnabled() 
+                            && prewarmingConfig.getScenarios() != null 
+                            && !prewarmingConfig.getScenarios().isEmpty();
 
-        if (!hasSimplePreload && !hasNamespacePreload) {
+        if (!hasSimplePreload && !hasNamespacePreload && !hasScenarios) {
             log.info("Template cache warming skipped (no templates configured)");
             return;
         }
@@ -96,6 +114,14 @@ public class TemplateCacheWarmer {
                         warmNamespacedTemplate(namespace, templateId);
                     }
                 }
+            }
+        }
+
+        // Strategy 3: Load with placeholder variables (scenarios)
+        if (hasScenarios) {
+            log.info("Preloading {} scenario(s) with placeholder variables", prewarmingConfig.getScenarios().size());
+            for (PrewarmingScenario scenario : prewarmingConfig.getScenarios()) {
+                warmScenario(scenario);
             }
         }
 
@@ -144,6 +170,65 @@ public class TemplateCacheWarmer {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Warm a template scenario with placeholder variables.
+     * 
+     * This loads a template and resolves its placeholders with specific variable values,
+     * effectively caching the template in its resolved state for the given scenario.
+     * 
+     * Pattern:
+     * 1. Load the base template (structural cache)
+     * 2. Deep-copy to preserve cached original
+     * 3. Interpolate fields with scenario variables
+     * 4. Warm resources from resolved paths
+     */
+    private void warmScenario(PrewarmingScenario scenario) {
+        try {
+            // Step 1: Load base template
+            DocumentTemplate baseTemplate;
+            if (scenario.getNamespace() != null && !scenario.getNamespace().isEmpty()) {
+                baseTemplate = templateLoader.loadTemplate(scenario.getNamespace(), scenario.getTemplateId());
+            } else {
+                baseTemplate = templateLoader.loadTemplate(scenario.getTemplateId());
+            }
+
+            // Step 2: Deep-copy to preserve cached structural template
+            DocumentTemplate resolvedTemplate = deepCopy(baseTemplate);
+
+            // Step 3: Interpolate fields with scenario variables
+            if (scenario.isInterpolateFields() && scenario.getVariables() != null && !scenario.getVariables().isEmpty()) {
+                templateLoader.interpolateTemplateFields(resolvedTemplate, scenario.getVariables());
+            }
+
+            // Step 4: Warm resources from resolved paths
+            warmResources(resolvedTemplate);
+
+            // Log success
+            String scenarioDesc = scenario.getName() != null ? scenario.getName() : scenario.getTemplateId();
+            String location = scenario.getNamespace() != null ? scenario.getNamespace() + "/" : "";
+            log.info("  Scenario '{}': {}{}", scenarioDesc, location, scenario.getTemplateId());
+            if (scenario.getDescription() != null) {
+                log.debug("    Description: {}", scenario.getDescription());
+            }
+        } catch (Exception e) {
+            String scenarioDesc = scenario.getName() != null ? scenario.getName() : scenario.getTemplateId();
+            log.error("  Failed to warm scenario '{}': {}/{}", scenarioDesc, 
+                    scenario.getNamespace(), scenario.getTemplateId(), e);
+        }
+    }
+
+    /**
+     * Deep copy a DocumentTemplate to avoid mutating cached instances.
+     */
+    private DocumentTemplate deepCopy(DocumentTemplate original) {
+        try {
+            String json = objectMapper.writeValueAsString(original);
+            return objectMapper.readValue(json, DocumentTemplate.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to deep copy template", e);
         }
     }
 }
