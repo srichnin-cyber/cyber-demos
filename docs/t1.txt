@@ -1,0 +1,21 @@
+**Flow classes (primary)**
+
+- **Controller:** `DocumentController` — accepts POST `/api/documents/generate/excel` and forwards to composer. DocumentController.java  
+- **Orchestrator:** `DocumentComposer` — loads the template, optionally auto-transforms plan data, invokes renderers per `PageSection`, retrieves the `Workbook` from the context and calls `ExcelOutputService.toBytes(...)`. DocumentComposer.java  
+- **Excel renderer:** `ExcelSectionRenderer` (implements `ExcelRenderer`) — loads the Excel template into a POI `Workbook`, fills cells/ranges (`fillExcelCells`, `applyRangeMapping`) and stores the filled `Workbook` in the `RenderContext`. ExcelSectionRenderer.java  
+- **Serializer / output:** `ExcelOutputService` — converts a POI `Workbook` to `byte[]` for HTTP response. ExcelOutputService.java
+
+**Supporting classes (data, mapping, loading)**
+
+- **Request model:** `DocumentGenerationRequest` — holds `namespace`, `templateId`, `data`, `variables`. DocumentGenerationRequest.java  
+- **Template loader:** `TemplateLoader` — resolves template path/bytes (may pull from filesystem, classpath, or external storage). TemplateLoader.java  
+- **Template model / section config:** `DocumentTemplate` and `PageSection` — carry section mappings, `templatePath`, mapping type, ranges (A1:G6), repeating groups. DocumentTemplate.java PageSection.java  
+- **Render context:** `RenderContext` — holds template, data, current section id, and metadata (where the renderer stores `excelWorkbook`). RenderContext.java  
+- **Mapping strategy:** `FieldMappingStrategy` + implementations (notably `JsonPathMappingStrategy`) — evaluate JSONPath expressions like `$.comparisonMatrix` and return lists/2D arrays used by `ExcelSectionRenderer`. FieldMappingStrategy.java JsonPathMappingStrategy.java  
+- **Data transformer (optional):** `PlanComparisonTransformer` — when `data.plans` exists and template expects it, builds `comparisonMatrix` (2D list) that maps into a range like `A1:G6`. PlanComparisonTransformer.java  
+- **Namespace & resource helpers:** `NamespaceResolver`, `ResourceStorageClient` — resolve template paths and optionally load templates from external storage. NamespaceResolver.java ResourceStorageClient.java
+
+**Where the 2D matrix becomes cells**
+- `JsonPathMappingStrategy.evaluatePath(...)` returns the 2D `comparisonMatrix` (List<List<...>>) and `ExcelSectionRenderer.applyRangeMapping(...)` writes that grid into the spreadsheet (row/col iteration). See: JsonPathMappingStrategy.java and ExcelSectionRenderer.java.
+
+If you want, I can produce a sequence diagram or a short code snippet showing the call order (Controller → Composer → TemplateLoader/Transformer → ExcelSectionRenderer → ExcelOutputService). Which would help more?

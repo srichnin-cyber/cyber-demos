@@ -1,0 +1,32 @@
+**Call Order (pseudocode)**
+
+```java
+// HTTP layer
+DocumentController.generateExcel(request) {
+  byte[] xlsx = documentComposer.generateExcel(request);
+  return ResponseEntity.ok()
+     .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+     .body(xlsx);
+}
+
+// Orchestrator
+DocumentComposer.generateExcel(request) {
+  DocumentTemplate template = templateLoader.loadTemplate(namespace, templateId);
+  transformPlanDataIfNeeded(request, template); // may call PlanComparisonTransformer.injectComparisonMatrix(...)
+  RenderContext context = new RenderContext(template, request.getData());
+  for (PageSection section : template.getSections()) {
+    SectionRenderer renderer = findRenderer(section.getType());
+    if (renderer instanceof ExcelRenderer) {
+      Workbook wb = ((ExcelRenderer) renderer).renderWorkbook(section, context);
+      if (wb != null) context.setMetadata("excelWorkbook", wb);
+    } else {
+      PDDocument pdfSection = renderer.render(section, context);
+      // pdf flow continues for non-Excel sections...
+    }
+  }
+  Workbook finalWorkbook = (Workbook) context.getMetadata("excelWorkbook");
+  return excelOutputService.toBytes(finalWorkbook); // serializes Workbook -> byte[]
+}
+```
+
+Key classes: `DocumentController` → `DocumentComposer` → `TemplateLoader` / `PlanComparisonTransformer` → `RenderContext` → `ExcelSectionRenderer` (implements `ExcelRenderer`) → `ExcelOutputService`.
