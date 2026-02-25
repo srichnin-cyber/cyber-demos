@@ -1,11 +1,12 @@
 {
   "namespace": "common-templates",
-  "templateId": "plan-comparison",
+  "templateId": "plan-comparison-two-row",
   "data": {
     "comparisonTitle": "Insurance Plan Comparison",
     "plans": [
       {
         "planName": "Basic",
+        "group": "Group A",
         "benefits": [
           { "name": "Doctor Visits", "value": "$20 copay" },
           { "name": "Prescriptions", "value": "$10 copay" }
@@ -13,6 +14,7 @@
       },
       {
         "planName": "Premium",
+        "group": "Group B",
         "benefits": [
           { "name": "Doctor Visits", "value": "Covered 100%" },
           { "name": "Prescriptions", "value": "$5 copay" }
