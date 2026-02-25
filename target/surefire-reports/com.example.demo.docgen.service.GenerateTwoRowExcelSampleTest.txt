@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.example.demo.docgen.service.GenerateTwoRowExcelSampleTest
--------------------------------------------------------------------------------
-Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.260 s -- in com.example.demo.docgen.service.GenerateTwoRowExcelSampleTest
