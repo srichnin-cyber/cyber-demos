@@ -482,6 +482,55 @@ public class DocumentComposer {
                     "value",
                     columnSpacing
                 );
+
+                // Optionally build a two-row header (primary plan name above, group below)
+                boolean twoRowHeader = false;
+                String groupField = "group"; // default field name for plan group
+                if (template.getConfig() != null) {
+                    Object flag = template.getConfig().get("twoRowHeader");
+                    twoRowHeader = flag instanceof Boolean && (Boolean) flag;
+                    Object gf = template.getConfig().get("groupField");
+                    if (gf instanceof String && !((String) gf).isEmpty()) {
+                        groupField = (String) gf;
+                    }
+                }
+
+                if (twoRowHeader) {
+                    @SuppressWarnings("unchecked")
+                    List<List<Object>> matrix = (List<List<Object>>) enrichedData.get("comparisonMatrix");
+                    if (matrix != null && !matrix.isEmpty()) {
+                        // Compute total columns expected
+                        int totalColumns = 1 + (plans.size() * (1 + columnSpacing));
+
+                        // Build header row 1 (primary plan names)
+                        List<Object> header1 = new ArrayList<>(totalColumns);
+                        header1.add("Benefit");
+                        for (Map<String, Object> plan : plans) {
+                            for (int s = 0; s < columnSpacing; s++) header1.add("");
+                            Object pn = plan.get("planName");
+                            header1.add(pn != null ? pn : "");
+                        }
+
+                        // Build header row 2 (group names)
+                        List<Object> header2 = new ArrayList<>(totalColumns);
+                        header2.add("");
+                        for (Map<String, Object> plan : plans) {
+                            for (int s = 0; s < columnSpacing; s++) header2.add("");
+                            Object grp = plan.get(groupField);
+                            header2.add(grp != null ? grp : "");
+                        }
+
+                        // Combine: drop the original single header row produced by transformer
+                        List<List<Object>> full = new ArrayList<>();
+                        full.add(header1);
+                        full.add(header2);
+                        if (matrix.size() > 1) {
+                            full.addAll(matrix.subList(1, matrix.size()));
+                        }
+
+                        enrichedData.put("comparisonMatrix", full);
+                    }
+                }
             }
             
             // Update the request's data with the enriched version containing matrix
