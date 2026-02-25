@@ -12,6 +12,7 @@ import com.example.demo.docgen.service.ResourceStorageClient;
 import com.example.demo.docgen.service.TemplateLoader;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellReference;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -35,7 +36,7 @@ import java.util.*;
  */
 @Slf4j
 @Component
-public class ExcelSectionRenderer implements SectionRenderer {
+public class ExcelSectionRenderer implements SectionRenderer, ExcelRenderer {
     
     private final List<FieldMappingStrategy> mappingStrategies;
     private final TemplateLoader templateLoader;
@@ -62,30 +63,30 @@ public class ExcelSectionRenderer implements SectionRenderer {
     @Override
     @LogExecutionTime("Excel Rendering")
     public PDDocument render(PageSection section, RenderContext context) {
+        // Delegate to workbook renderer to keep PDF-based contract intact
         try {
-            log.info("Rendering Excel section: {} with template: {}", section.getSectionId(), section.getTemplatePath());
-            
-            // Load the Excel template
-            Workbook workbook = loadTemplateAsWorkbook(section.getTemplatePath(), context);
-            
-            // Fill Excel cells with values (supports single cells, ranges, and tables)
-            fillExcelCells(workbook, section, context);
-            
-            // Save workbook for later retrieval (via ExcelOutputService)
-            context.setMetadata("excelWorkbook", workbook);
-            
-            // For now, return empty PDDocument as per interface contract
-            // Future: This will be enhanced through an ExcelOutputService that can:
-            // 1. Store the workbook in a session/cache
-            // 2. Return the actual Excel file to the client
-            log.debug("Excel section rendered successfully. Workbook stored in context for output.");
+            Workbook workbook = renderWorkbook(section, context);
+            // Keep backward-compatible behavior: store workbook and return placeholder PDDocument
+            if (workbook != null) context.setMetadata("excelWorkbook", workbook);
             return new PDDocument();
-            
         } catch (ResourceLoadingException rle) {
-            // Propagate resource loading errors so controller can return user-friendly response
+            throw rle;
+        }
+    }
+
+    @Override
+    public Workbook renderWorkbook(PageSection section, RenderContext context) {
+        try {
+            log.info("Rendering Excel workbook: {} with template: {}", section.getSectionId(), section.getTemplatePath());
+            Workbook workbook = loadTemplateAsWorkbook(section.getTemplatePath(), context);
+            fillExcelCells(workbook, section, context);
+            context.setMetadata("excelWorkbook", workbook);
+            log.debug("Excel workbook rendered and stored in context.");
+            return workbook;
+        } catch (ResourceLoadingException rle) {
             throw rle;
         } catch (IOException e) {
-            throw new RuntimeException("Failed to render Excel section: " + section.getSectionId(), e);
+            throw new RuntimeException("Failed to render Excel workbook: " + section.getSectionId(), e);
         }
     }
     

@@ -231,8 +231,14 @@ public class DocumentComposer {
 
                 context.setCurrentSectionId(section.getSectionId());
                 SectionRenderer renderer = findRenderer(section.getType());
-                // Render; ExcelSectionRenderer stores workbook in context metadata
-                renderer.render(section, context);
+                // If renderer can produce a Workbook directly, use that API path
+                if (renderer instanceof com.example.demo.docgen.renderer.ExcelRenderer) {
+                    org.apache.poi.ss.usermodel.Workbook wb = ((com.example.demo.docgen.renderer.ExcelRenderer) renderer).renderWorkbook(section, context);
+                    if (wb != null) context.setMetadata("excelWorkbook", wb);
+                } else {
+                    // Fallback to PDF-based render contract
+                    renderer.render(section, context);
+                }
             }
 
             Object wbObj = context.getMetadata("excelWorkbook");

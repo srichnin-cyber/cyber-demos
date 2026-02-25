@@ -1,0 +1,23 @@
+{
+  "namespace": "common-templates",
+  "templateId": "plan-comparison",
+  "data": {
+    "comparisonTitle": "Insurance Plan Comparison",
+    "plans": [
+      {
+        "planName": "Basic",
+        "benefits": [
+          { "name": "Doctor Visits", "value": "$20 copay" },
+          { "name": "Prescriptions", "value": "$10 copay" }
+        ]
+      },
+      {
+        "planName": "Premium",
+        "benefits": [
+          { "name": "Doctor Visits", "value": "Covered 100%" },
+          { "name": "Prescriptions", "value": "$5 copay" }
+        ]
+      }
+    ]
+  }
+}
