@@ -36,14 +36,16 @@ public class PlanComparisonTransformer {
      * @param plans List of plan objects with planName and benefits array
      * @param benefitNameField Field name for benefit name (default: "name")
      * @param benefitValueField Field name for benefit value (default: "value")
-     * @param spacingWidth Number of empty columns between plan columns (default: 1)
+     * @param columnSpacingWidth Number of empty columns between plan columns (default: 1)
+     * @param rowSpacingHeight Number of empty rows to insert after each benefit row (default: 0)
      * @return 2D array (List<List<String>>) suitable for 2D array Excel mapping
      */
     public static List<List<Object>> transformPlansToMatrix(
             List<Map<String, Object>> plans,
             String benefitNameField,
             String benefitValueField,
-            int spacingWidth) {
+            int columnSpacingWidth,
+            int rowSpacingHeight) {
 
         if (plans == null || plans.isEmpty()) {
             return new ArrayList<>();
@@ -96,12 +98,15 @@ public class PlanComparisonTransformer {
         // Step 4: Build the 2D matrix
         List<List<Object>> matrix = new ArrayList<>();
 
+        // Calculate total columns for spanning row spacers
+        int totalColumns = 1 + (planNames.size() * (1 + columnSpacingWidth));
+        
         // Header row: ["Benefit", "", "Plan1", "", "Plan2", "", ...]
         List<Object> headerRow = new ArrayList<>();
         headerRow.add("Benefit");
         for (int i = 0; i < planNames.size(); i++) {
             // Add spacing column(s)
-            for (int s = 0; s < spacingWidth; s++) {
+            for (int s = 0; s < columnSpacingWidth; s++) {
                 headerRow.add("");
             }
             // Add plan name
@@ -117,7 +122,7 @@ public class PlanComparisonTransformer {
 
             for (String planName : planNames) {
                 // Add spacing column(s)
-                for (int s = 0; s < spacingWidth; s++) {
+                for (int s = 0; s < columnSpacingWidth; s++) {
                     row.add("");
                 }
                 // Add benefit value for this plan
@@ -127,16 +132,38 @@ public class PlanComparisonTransformer {
             }
 
             matrix.add(row);
+            
+            // Add row spacing after benefit (if configured)
+            if (rowSpacingHeight > 0) {
+                for (int s = 0; s < rowSpacingHeight; s++) {
+                    List<Object> spacerRow = new ArrayList<>();
+                    for (int c = 0; c < totalColumns; c++) {
+                        spacerRow.add("");
+                    }
+                    matrix.add(spacerRow);
+                }
+            }
         }
 
         return matrix;
     }
 
     /**
-     * Convenience method with defaults: benefitNameField="name", benefitValueField="value", spacingWidth=1
+     * Convenience method with defaults: benefitNameField="name", benefitValueField="value", columnSpacingWidth=1, rowSpacingHeight=0
      */
     public static List<List<Object>> transformPlansToMatrix(List<Map<String, Object>> plans) {
-        return transformPlansToMatrix(plans, "name", "value", 1);
+        return transformPlansToMatrix(plans, "name", "value", 1, 0);
+    }
+    
+    /**
+     * Convenience method with custom spacing. rowSpacingHeight defaults to 0.
+     */
+    public static List<List<Object>> transformPlansToMatrix(
+            List<Map<String, Object>> plans,
+            String benefitNameField,
+            String benefitValueField,
+            int columnSpacingWidth) {
+        return transformPlansToMatrix(plans, benefitNameField, benefitValueField, columnSpacingWidth, 0);
     }
 
     /**
@@ -164,10 +191,27 @@ public class PlanComparisonTransformer {
             List<Map<String, Object>> plans,
             String benefitNameField,
             String benefitValueField,
-            int spacingWidth) {
+            int columnSpacingWidth) {
         
         Map<String, Object> result = new HashMap<>(data);
-        List<List<Object>> matrix = transformPlansToMatrix(plans, benefitNameField, benefitValueField, spacingWidth);
+        List<List<Object>> matrix = transformPlansToMatrix(plans, benefitNameField, benefitValueField, columnSpacingWidth, 0);
+        result.put("comparisonMatrix", matrix);
+        return result;
+    }
+    
+    /**
+     * Inject comparison matrix with custom spacing (both column and row).
+     */
+    public static Map<String, Object> injectComparisonMatrix(
+            Map<String, Object> data,
+            List<Map<String, Object>> plans,
+            String benefitNameField,
+            String benefitValueField,
+            int columnSpacingWidth,
+            int rowSpacingHeight) {
+        
+        Map<String, Object> result = new HashMap<>(data);
+        List<List<Object>> matrix = transformPlansToMatrix(plans, benefitNameField, benefitValueField, columnSpacingWidth, rowSpacingHeight);
         result.put("comparisonMatrix", matrix);
         return result;
     }
@@ -190,12 +234,16 @@ public class PlanComparisonTransformer {
         return transformPlansToMatrixValuesOnly(plans, "name", "value", 1);
     }
 
+    /**
+     * Convenience variant with row spacing support.
+     */
     public static List<List<Object>> transformPlansToMatrixValuesOnly(
             List<Map<String, Object>> plans,
             String benefitNameField,
             String benefitValueField,
-            int spacingWidth) {
-        List<List<Object>> full = transformPlansToMatrix(plans, benefitNameField, benefitValueField, spacingWidth);
+            int columnSpacingWidth,
+            int rowSpacingHeight) {
+        List<List<Object>> full = transformPlansToMatrix(plans, benefitNameField, benefitValueField, columnSpacingWidth, rowSpacingHeight);
         if (full.isEmpty()) {
             return full;
         }
@@ -209,6 +257,17 @@ public class PlanComparisonTransformer {
             }
         }
         return stripped;
+    }
+    
+    /**
+     * Convenience variant without row spacing (defaults to 0).
+     */
+    public static List<List<Object>> transformPlansToMatrixValuesOnly(
+            List<Map<String, Object>> plans,
+            String benefitNameField,
+            String benefitValueField,
+            int columnSpacingWidth) {
+        return transformPlansToMatrixValuesOnly(plans, benefitNameField, benefitValueField, columnSpacingWidth, 0);
     }
 
     /**
@@ -225,14 +284,33 @@ public class PlanComparisonTransformer {
         return injectComparisonMatrixValuesOnly(data, plans, "name", "value", 1);
     }
 
+    /**
+     * Inject values-only matrix with custom spacing.
+     */
     public static Map<String, Object> injectComparisonMatrixValuesOnly(
             Map<String, Object> data,
             List<Map<String, Object>> plans,
             String benefitNameField,
             String benefitValueField,
-            int spacingWidth) {
+            int columnSpacingWidth) {
         Map<String, Object> result = new HashMap<>(data);
-        List<List<Object>> matrix = transformPlansToMatrixValuesOnly(plans, benefitNameField, benefitValueField, spacingWidth);
+        List<List<Object>> matrix = transformPlansToMatrixValuesOnly(plans, benefitNameField, benefitValueField, columnSpacingWidth, 0);
+        result.put("comparisonMatrixValues", matrix);
+        return result;
+    }
+    
+    /**
+     * Inject values-only matrix with both column and row spacing.
+     */
+    public static Map<String, Object> injectComparisonMatrixValuesOnly(
+            Map<String, Object> data,
+            List<Map<String, Object>> plans,
+            String benefitNameField,
+            String benefitValueField,
+            int columnSpacingWidth,
+            int rowSpacingHeight) {
+        Map<String, Object> result = new HashMap<>(data);
+        List<List<Object>> matrix = transformPlansToMatrixValuesOnly(plans, benefitNameField, benefitValueField, columnSpacingWidth, rowSpacingHeight);
         result.put("comparisonMatrixValues", matrix);
         return result;
     }
