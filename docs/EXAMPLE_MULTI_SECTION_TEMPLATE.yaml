@@ -1,0 +1,400 @@
+templateId: employee-annual-report
+description: >
+  Comprehensive annual report with multiple sections:
+  - Executive Summary
+  - Department Breakdown
+  - Employee Directory
+  - Salary Analysis
+  All sections populate a SINGLE multi-sheet workbook in sequence.
+
+config:
+  columnSpacing: 1
+  description: |
+    This template demonstrates:
+    1. Multiple sections with different sectionIds
+    2. All targeting the SAME base template (same templatePath)
+    3. Each section populating different sheets
+    4. Mix of simple mappings and repeating groups
+    5. Conditional rendering based on data
+
+sections:
+  # ============================================================================
+  # SECTION 1: Executive Summary (Sheet1)
+  # ============================================================================
+  # Basic company-wide metrics
+  - sectionId: executive_summary
+    type: EXCEL
+    templatePath: annual-report.xlsx
+    order: 1
+    mappingType: JSONPATH
+    fieldMappings:
+      "ExecutiveSummary!A1": "$.companyName"
+      "ExecutiveSummary!A2": "$.reportYear"
+      "ExecutiveSummary!A3": "$.reportDate"
+      "ExecutiveSummary!B5": "$.totalEmployees"
+      "ExecutiveSummary!B6": "$.totalDepartments"
+      "ExecutiveSummary!B7": "$.averageSalary"
+      "ExecutiveSummary!B8": "$.totalPayroll"
+      "ExecutiveSummary!A11:D15": "$.keyMetrics"
+
+  # ============================================================================
+  # SECTION 2: Department Statistics (separate sheet)
+  # ============================================================================
+  # Populate department summary table using repeating group
+  - sectionId: department_breakdown
+    type: EXCEL
+    templatePath: annual-report.xlsx  # SAME TEMPLATE
+    order: 2
+    fieldMappingGroups:
+      - mappingType: JSONPATH
+        basePath: "$.departments"
+        repeatingGroup:
+          startCell: "DepartmentSummary!A3"
+          insertRows: false
+          overwrite: true
+          maxItems: 50
+          fields:
+            "A": "name"
+            "B": "headCount"
+            "C": "totalSalary"
+            "D": "budgetUtilization"
+            "E": "performanceRating"
+
+  # ============================================================================
+  # SECTION 3: Directory with detailed employee info
+  # ============================================================================
+  # Use a different repeating group for employee list
+  - sectionId: employee_directory
+    type: EXCEL
+    templatePath: annual-report.xlsx  # SAME BASE TEMPLATE
+    order: 3
+    fieldMappingGroups:
+      - mappingType: JSONPATH
+        basePath: "$.employees"
+        repeatingGroup:
+          startCell: "EmployeeDirectory!A4"
+          insertRows: false
+          overwrite: true
+          maxItems: 1000
+          fields:
+            "A": "employeeId"
+            "B": "firstName"
+            "C": "lastName"
+            "D": "department"
+            "E": "title"
+            "F": "salary"
+            "G": "hireDate"
+            "H": "performanceRating"
+
+  # ============================================================================
+  # SECTION 4: Salary Analysis (optional, conditional rendering)
+  # ============================================================================
+  # Only include salary breakdown if HR has approved detailed salary reporting
+  - sectionId: salary_analysis
+    type: EXCEL
+    templatePath: annual-report.xlsx  # SAME TEMPLATE
+    order: 4
+    condition: "$.includeSalaryDetails"  # Only render if condition is true
+    fieldMappings:
+      "SalaryAnalysis!A1": "$.salaryAnalysisTitle"
+      "SalaryAnalysis!A2": "$.analysisDate"
+      "SalaryAnalysis!A5:D25": "$.salaryBracketMatrix"  # 2D salary ranges
+
+  # ============================================================================
+  # SECTION 5: Compensation by Level (uses repeating group)
+  # ============================================================================
+  # Populate compensation bands - demonstrates repeating group on fourth sheet
+  - sectionId: compensation_levels
+    type: EXCEL
+    templatePath: annual-report.xlsx  # SAME TEMPLATE
+    order: 5
+    condition: "$.includeSalaryDetails"  # Same condition as Section 4
+    fieldMappingGroups:
+      - mappingType: JSONPATH
+        basePath: "$.compensationBands"
+        repeatingGroup:
+          startCell: "CompensationLevels!A3"
+          insertRows: false
+          overwrite: true
+          maxItems: 20
+          fields:
+            "A": "levelName"
+            "B": "minSalary"
+            "C": "maxSalary"
+            "D": "averageSalary"
+            "E": "headCount"
+            "F": "percentOfWorkforce"
+
+  # ============================================================================
+  # SECTION 6: Departmental Salary Distribution (values-only)
+  # ============================================================================
+  # Fill a pre-formatted salary matrix, preserving any template formulas
+  - sectionId: salary_distribution
+    type: EXCEL
+    templatePath: annual-report.xlsx  # SAME TEMPLATE
+    order: 6
+    condition: "$.includeSalaryDetails"
+    mappingType: JSONPATH
+    fieldMappings:
+      "SalaryDistribution!B2:F10": "$.salaryMatrixValues"  # Values-only (preserves formulas)
+
+---
+
+## Example Data Structure
+
+```json
+{
+  "companyName": "TechCorp Inc.",
+  "reportYear": 2025,
+  "reportDate": "2025-12-31",
+  "totalEmployees": 342,
+  "totalDepartments": 8,
+  "averageSalary": 87500,
+  "totalPayroll": 29916600,
+  "includeSalaryDetails": true,
+  "keyMetrics": [
+    ["Metric", "2024", "2025", "YoY Change"],
+    ["Revenue", "$50M", "$65M", "+30%"],
+    ["Headcount", "320", "342", "+6.9%"],
+    ["Avg Salary", "$82K", "$87.5K", "+6.7%"]
+  ],
+  "departments": [
+    {
+      "name": "Engineering",
+      "headCount": 120,
+      "totalSalary": 12000000,
+      "budgetUtilization": 0.95,
+      "performanceRating": 4.5
+    },
+    {
+      "name": "Sales",
+      "headCount": 80,
+      "totalSalary": 6400000,
+      "budgetUtilization": 0.92,
+      "performanceRating": 4.2
+    },
+    {
+      "name": "Marketing",
+      "headCount": 30,
+      "totalSalary": 2250000,
+      "budgetUtilization": 0.88,
+      "performanceRating": 4.0
+    },
+    {
+      "name": "HR",
+      "headCount": 12,
+      "totalSalary": 720000,
+      "budgetUtilization": 0.90,
+      "performanceRating": 4.3
+    },
+    {
+      "name": "Finance",
+      "headCount": 25,
+      "totalSalary": 2500000,
+      "budgetUtilization": 0.94,
+      "performanceRating": 4.6
+    },
+    {
+      "name": "Operations",
+      "headCount": 50,
+      "totalSalary": 3500000,
+      "budgetUtilization": 0.89,
+      "performanceRating": 4.1
+    },
+    {
+      "name": "Legal",
+      "headCount": 10,
+      "totalSalary": 1200000,
+      "budgetUtilization": 0.80,
+      "performanceRating": 4.4
+    },
+    {
+      "name": "Executive",
+      "headCount": 15,
+      "totalSalary": 3600000,
+      "budgetUtilization": 0.98,
+      "performanceRating": 4.7
+    }
+  ],
+  "employees": [
+    {
+      "employeeId": "E001",
+      "firstName": "Alice",
+      "lastName": "Johnson",
+      "department": "Engineering",
+      "title": "Senior Software Engineer",
+      "salary": 145000,
+      "hireDate": "2019-01-15",
+      "performanceRating": 4.8
+    },
+    {
+      "employeeId": "E002",
+      "firstName": "Bob",
+      "lastName": "Smith",
+      "department": "Sales",
+      "title": "Account Executive",
+      "salary": 95000,
+      "hireDate": "2020-05-20",
+      "performanceRating": 4.3
+    },
+    {
+      "employeeId": "E003",
+      "firstName": "Carol",
+      "lastName": "Williams",
+      "department": "Marketing",
+      "title": "Marketing Manager",
+      "salary": 85000,
+      "hireDate": "2018-03-10",
+      "performanceRating": 4.5
+    },
+    {
+      "employeeId": "E004",
+      "firstName": "David",
+      "lastName": "Brown",
+      "department": "Finance",
+      "title": "Financial Analyst",
+      "salary": 75000,
+      "hireDate": "2021-07-01",
+      "performanceRating": 4.2
+    }
+  ],
+  "compensationBands": [
+    {
+      "levelName": "Entry Level",
+      "minSalary": 45000,
+      "maxSalary": 65000,
+      "averageSalary": 55000,
+      "headCount": 85,
+      "percentOfWorkforce": 0.248
+    },
+    {
+      "levelName": "Mid-Level",
+      "minSalary": 65000,
+      "maxSalary": 100000,
+      "averageSalary": 80000,
+      "headCount": 182,
+      "percentOfWorkforce": 0.532
+    },
+    {
+      "levelName": "Senior",
+      "minSalary": 100000,
+      "maxSalary": 150000,
+      "averageSalary": 125000,
+      "headCount": 60,
+      "percentOfWorkforce": 0.175
+    },
+    {
+      "levelName": "Executive",
+      "minSalary": 150000,
+      "maxSalary": 400000,
+      "averageSalary": 240000,
+      "headCount": 15,
+      "percentOfWorkforce": 0.044
+    }
+  ],
+  "salaryAnalysisTitle": "2025 Comprehensive Salary Analysis",
+  "analysisDate": "2026-01-15",
+  "salaryBracketMatrix": [
+    ["Bracket", "Min", "Max", "Count"],
+    ["$45K - $60K", 45000, 60000, 42],
+    ["$60K - $80K", 60000, 80000, 98],
+    ["$80K - $100K", 80000, 100000, 84],
+    ["$100K - $130K", 100000, 130000, 45],
+    ["$130K - $160K", 130000, 160000, 25],
+    ["$160K+", 160000, 500000, 48]
+  ],
+  "salaryMatrixValues": [
+    ["Department", "Engineering", "Sales", "Marketing", "Finance"],
+    ["Min", 95000, 75000, 65000, 70000],
+    ["Max", 180000, 140000, 110000, 140000],
+    ["Average", 125000, 95000, 85000, 100000],
+    ["Count", 120, 80, 30, 25],
+    ["Budget %", "40%", "21%", "7.5%", "8%"]
+  ]
+}
+```
+
+## Expected Output
+
+When the template processes all sections with the above data, a **single Excel workbook** is generated with **6 sheets**:
+
+```
+annual-report.xlsx
+├── ExecutiveSummary (Sheet 1)
+│   ├── Company Name: TechCorp Inc.
+│   ├── Report Year: 2025
+│   ├── Report Date: 2025-12-31
+│   ├── Total Employees: 342
+│   ├── Total Departments: 8
+│   ├── Average Salary: $87,500
+│   ├── Total Payroll: $29,916,600
+│   └── Key Metrics (4 rows x 4 columns)
+│
+├── DepartmentSummary (Sheet 2)
+│   ├── Header: Name | HeadCount | TotalSalary | BudgetUtilization | PerformanceRating
+│   ├── Row 3: Engineering | 120 | $12,000,000 | 0.95 | 4.5
+│   ├── Row 4: Sales | 80 | $6,400,000 | 0.92 | 4.2
+│   ├── Row 5: Marketing | 30 | $2,250,000 | 0.88 | 4.0
+│   ├── Row 6: HR | 12 | $720,000 | 0.90 | 4.3
+│   ├── Row 7: Finance | 25 | $2,500,000 | 0.94 | 4.6
+│   ├── Row 8: Operations | 50 | $3,500,000 | 0.89 | 4.1
+│   ├── Row 9: Legal | 10 | $1,200,000 | 0.80 | 4.4
+│   └── Row 10: Executive | 15 | $3,600,000 | 0.98 | 4.7
+│
+├── EmployeeDirectory (Sheet 3)
+│   ├── Header: ID | FirstName | LastName | Department | Title | Salary | HireDate | Rating
+│   ├── Row 4: E001 | Alice | Johnson | Engineering | Senior Software Engineer | $145,000 | 2019-01-15 | 4.8
+│   ├── Row 5: E002 | Bob | Smith | Sales | Account Executive | $95,000 | 2020-05-20 | 4.3
+│   ├── Row 6: E003 | Carol | Williams | Marketing | Marketing Manager | $85,000 | 2018-03-10 | 4.5
+│   └── Row 7: E004 | David | Brown | Finance | Financial Analyst | $75,000 | 2021-07-01 | 4.2
+│   (... more employees ...)
+│
+├── SalaryAnalysis (Sheet 4)  [RENDERED - includeSalaryDetails=true]
+│   ├── Title: 2025 Comprehensive Salary Analysis
+│   ├── Date: 2026-01-15
+│   └── Salary Bracket Matrix (6 rows x 4 columns)
+│
+├── CompensationLevels (Sheet 5)  [RENDERED - includeSalaryDetails=true]
+│   ├── Header: LevelName | MinSalary | MaxSalary | AvgSalary | HeadCount | PercentOfWorkforce
+│   ├── Row 3: Entry Level | $45,000 | $65,000 | $55,000 | 85 | 24.8%
+│   ├── Row 4: Mid-Level | $65,000 | $100,000 | $80,000 | 182 | 53.2%
+│   ├── Row 5: Senior | $100,000 | $150,000 | $125,000 | 60 | 17.5%
+│   └── Row 6: Executive | $150,000 | $400,000 | $240,000 | 15 | 4.4%
+│
+└── SalaryDistribution (Sheet 6)  [RENDERED - includeSalaryDetails=true]
+    └── Salary Matrix [formulas in template PRESERVED]
+        ├── Department | Engineering | Sales | Marketing | Finance
+        ├── Min: $95K | $75K | $65K | $70K
+        ├── Max: $180K | $140K | $110K | $140K
+        ├── Average: $125K | $95K | $85K | $100K
+        ├── Count: 120 | 80 | 30 | 25
+        └── Budget %: 40% | 21% | 7.5% | 8%
+```
+
+## Processing Timeline
+
+| Order | Section ID | Template | Sheets | Action |
+|-------|-----------|----------|--------|--------|
+| 1 | executive_summary | annual-report.xlsx | Create workbook, populate ExecutiveSummary sheet |
+| 2 | department_breakdown | annual-report.xlsx | Add DepartmentSummary sheet to same workbook |
+| 3 | employee_directory | annual-report.xlsx | Add EmployeeDirectory sheet to same workbook |
+| 4 | salary_analysis | annual-report.xlsx | Check condition → TRUE, add SalaryAnalysis sheet |
+| 5 | compensation_levels | annual-report.xlsx | Check condition → TRUE, add CompensationLevels sheet |
+| 6 | salary_distribution | annual-report.xlsx | Check condition → TRUE, add SalaryDistribution sheet |
+
+**Final Result:** 1 workbook × 6 sheets × all sections populated
+
+---
+
+## Key Characteristics
+
+✅ **All sections use same templatePath** → Single template loaded, multiple sections fill it  
+✅ **Different sheets per section** → Each section targets different sheet names  
+✅ **Shared workbook state** → All sections see existing sheets and can add to them  
+✅ **Ordered processing** → Sections execute in order 1→2→3→4→5→6  
+✅ **Conditional rendering** → Sections 4, 5, 6 only appear if `includeSalaryDetails=true`  
+✅ **Repeating groups** → Sections 2, 3, 5 use repeating groups for dynamic row population  
+✅ **Values-only** → Section 6 fills formulas-aware range (preserves template calculations)  
+✅ **Single output** → One merged multipanel workbook
+
+This template demonstrates professional-grade Excel generation for complex reports!

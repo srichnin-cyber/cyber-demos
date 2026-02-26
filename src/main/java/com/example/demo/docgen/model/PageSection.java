@@ -89,6 +89,15 @@ public class PageSection {
     private List<OverflowConfig> overflowConfigs = new ArrayList<>();
     
     /**
+     * Control whether range mappings should overwrite existing non-blank cells.
+     * - true (default): overwrite all cells in the range
+     * - false: preserve existing non-blank cells and formulas
+     * Note: Formulas are always preserved regardless of this setting
+     */
+    @Builder.Default
+    private Boolean overwrite = true;
+    
+    /**
      * Check if this section uses multiple mapping groups
      */
     public boolean hasMultipleMappingGroups() {

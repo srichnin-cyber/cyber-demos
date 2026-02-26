@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.ss.usermodel.Row;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -251,12 +252,17 @@ class ExcelGenerationComprehensiveTest {
 
             // If auto-transformation worked, we should see the matrix
             assertEquals("Benefit", getCellValue(sheet, 0, 0));
-            assertEquals("Entry", getCellValue(sheet, 0, 2));
-            assertEquals("Plus", getCellValue(sheet, 0, 4));
+            // template is configured with columnSpacing=2; compute offsets
+            int spacing = 2;
+            int firstPlanCol = 1 + spacing;                // after "Benefit" + spacing
+            int secondPlanCol = firstPlanCol + 1 + spacing; // next plan header
+
+            assertEquals("Entry", getCellValue(sheet, 0, firstPlanCol));
+            assertEquals("Plus", getCellValue(sheet, 0, secondPlanCol));
 
             assertEquals("Primary Care", getCellValue(sheet, 1, 0));
-            assertEquals("$15", getCellValue(sheet, 1, 2));
-            assertEquals("Free", getCellValue(sheet, 1, 4));
+            assertEquals("$15", getCellValue(sheet, 1, firstPlanCol));
+            assertEquals("Free", getCellValue(sheet, 1, secondPlanCol));
 
             workbook.close();
         }
@@ -328,20 +334,21 @@ class ExcelGenerationComprehensiveTest {
             String first = getCellValue(sheet, 0, 0);
             assertTrue(first == null || first.isEmpty(), "Column A should be blank but was: '" + first + "'");
 
-            // debug: print header row to understand mapping
-            System.out.println("Header row values: " +
-                getCellValue(sheet,0,0) + "," +
-                getCellValue(sheet,0,1) + "," +
-                getCellValue(sheet,0,2) + "," +
-                getCellValue(sheet,0,3) + "," +
-                getCellValue(sheet,0,4));
+            // dump first two rows for debugging
+            System.out.println("Row0: " + rowToString(sheet, 0, 0, 10));
+            System.out.println("Row1: " + rowToString(sheet, 1, 0, 10));
 
-            // Values appear starting at column C (because the first element maps
-            // to B1 which is the spacer).  Expect X in C1 and Y in E1.
-            assertEquals("X", getCellValue(sheet, 0, 2));
-            assertEquals("Y", getCellValue(sheet, 0, 4));
-            assertEquals("1", getCellValue(sheet, 1, 2));
-            assertEquals("2", getCellValue(sheet, 1, 4));
+            // compute offsets using the same spacing as plan-comparison config
+            int spacing = 2;
+            int firstPlanCol = 1 + spacing;
+            int secondPlanCol = firstPlanCol + 1 + spacing;
+
+            System.out.println("Using firstPlanCol="+firstPlanCol+" secondPlanCol="+secondPlanCol);
+
+            assertEquals("X", getCellValue(sheet, 0, firstPlanCol));
+            assertEquals("Y", getCellValue(sheet, 0, secondPlanCol));
+            assertEquals("1", getCellValue(sheet, 1, firstPlanCol));
+            assertEquals("2", getCellValue(sheet, 1, secondPlanCol));
 
             workbook.close();
         }
@@ -668,11 +675,29 @@ class ExcelGenerationComprehensiveTest {
     }
 
     private String getCellValue(Sheet sheet, int row, int col) {
-        var cell = sheet.getRow(row);
+        var r = sheet.getRow(row);
+        if (r == null) return null;
+        var cell = r.getCell(col);
         if (cell == null) return null;
-        var cellValue = cell.getCell(col);
-        if (cellValue == null) return null;
-        return cellValue.getStringCellValue();
+        switch (cell.getCellType()) {
+            case STRING:
+                return cell.getStringCellValue();
+            case NUMERIC:
+                // remove any trailing .0 if integer
+                double d = cell.getNumericCellValue();
+                if (d == (long) d) {
+                    return String.valueOf((long) d);
+                }
+                return String.valueOf(d);
+            case BOOLEAN:
+                return String.valueOf(cell.getBooleanCellValue());
+            case FORMULA:
+                return cell.getCellFormula();
+            case BLANK:
+                return "";
+            default:
+                return cell.toString();
+        }
     }
 
     private Map<String, Object> createPlan(String planName, List<Map<String, Object>> benefits) {
@@ -687,5 +712,16 @@ class ExcelGenerationComprehensiveTest {
         benefit.put("name", name);
         benefit.put("value", value);
         return benefit;
+    }
+
+    private String rowToString(Sheet sheet, int rowIndex, int startCol, int endCol) {
+        Row r = sheet.getRow(rowIndex);
+        if (r == null) return "<null>";
+        StringBuilder sb = new StringBuilder();
+        for (int c = startCol; c <= endCol; c++) {
+            sb.append(getCellValue(sheet, rowIndex, c));
+            if (c < endCol) sb.append("|");
+        }
+        return sb.toString();
     }
 }

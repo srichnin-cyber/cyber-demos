@@ -15,6 +15,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellReference;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -78,10 +79,28 @@ public class ExcelSectionRenderer implements SectionRenderer, ExcelRenderer {
     public Workbook renderWorkbook(PageSection section, RenderContext context) {
         try {
             log.info("Rendering Excel workbook: {} with template: {}", section.getSectionId(), section.getTemplatePath());
-            Workbook workbook = loadTemplateAsWorkbook(section.getTemplatePath(), context);
+            
+            // For multi-section rendering: check if a workbook already exists in the context
+            // If it does and matches the current template path, reuse it instead of loading fresh
+            Workbook workbook = null;
+            Object existingWb = context.getMetadata("excelWorkbook");
+            String lastTemplatePath = (String) context.getMetadata("excelTemplateLastPath");
+            
+            if (existingWb instanceof org.apache.poi.ss.usermodel.Workbook && 
+                section.getTemplatePath().equals(lastTemplatePath)) {
+                // Reuse existing workbook from previous section (same template)
+                workbook = (org.apache.poi.ss.usermodel.Workbook) existingWb;
+                log.debug("Reusing existing Excel workbook from previous section (same template: {})", section.getTemplatePath());
+            } else {
+                // Load fresh template (first section or different template path)
+                workbook = loadTemplateAsWorkbook(section.getTemplatePath(), context);
+                context.setMetadata("excelTemplateLastPath", section.getTemplatePath());
+                log.debug("Loaded fresh Excel template: {}", section.getTemplatePath());
+            }
+            
             fillExcelCells(workbook, section, context);
             context.setMetadata("excelWorkbook", workbook);
-            log.debug("Excel workbook rendered and stored in context.");
+            log.debug("Excel workbook rendered and stored in context. Current sheets: {}", workbook.getNumberOfSheets());
             return workbook;
         } catch (ResourceLoadingException rle) {
             throw rle;
@@ -310,14 +329,8 @@ public class ExcelSectionRenderer implements SectionRenderer, ExcelRenderer {
                 Map<String, String> mapped = strategy.mapFromContext(item, single);
                 String value = mapped.getOrDefault("_tmp", "");
 
-                if (!Boolean.TRUE.equals(config.getOverwrite())) {
-                    Cell existing = row.getCell(colIndex);
-                    if (existing != null && existing.getCellType() != CellType.BLANK) {
-                        continue; // preserve existing
-                    }
-                }
-
-                setCellValueAt(sheet, targetRowIndex, colIndex, value);
+                // Write cell with overwrite control
+                setCellValueAt(sheet, targetRowIndex, colIndex, value, Boolean.TRUE.equals(config.getOverwrite()));
             }
         }
     }
@@ -444,7 +457,7 @@ public class ExcelSectionRenderer implements SectionRenderer, ExcelRenderer {
                     try {
                         if (key.contains(":")) {
                             // Range mapping (e.g., Sheet1!A2:A6 or A2:A6)
-                            applyRangeMapping(workbook, key, strategy.evaluatePath(context.getData(), expression));
+                            applyRangeMapping(workbook, key, strategy.evaluatePath(context.getData(), expression), Boolean.TRUE.equals(section.getOverwrite()));
                         } else {
                             // Single cell mapping
                             String value = strategy.mapFromContext(context.getData(), Collections.singletonMap(key, expression)).getOrDefault(key, "");
@@ -465,7 +478,7 @@ public class ExcelSectionRenderer implements SectionRenderer, ExcelRenderer {
             String expression = mapping.getValue();
             try {
                 if (key.contains(":")) {
-                    applyRangeMapping(workbook, key, strategy.evaluatePath(context.getData(), expression));
+                    applyRangeMapping(workbook, key, strategy.evaluatePath(context.getData(), expression), Boolean.TRUE.equals(section.getOverwrite()));
                 } else {
                     String value = strategy.mapFromContext(context.getData(), Collections.singletonMap(key, expression)).getOrDefault(key, "");
                     setCellValue(workbook, key, value);
@@ -479,9 +492,10 @@ public class ExcelSectionRenderer implements SectionRenderer, ExcelRenderer {
     /**
      * Apply a range mapping. The 'value' object may be a List of primitives (fill sequentially),
      * or a List of List for two-dimensional fills.
+     * Respects the overwrite flag: if false, skips non-blank cells and formulas.
      */
     @SuppressWarnings("unchecked")
-    private void applyRangeMapping(Workbook workbook, String rangeKey, Object value) {
+    private void applyRangeMapping(Workbook workbook, String rangeKey, Object value, boolean overwrite) {
         // Parse sheet and start/end cell
         String sheetName = null;
         String range = rangeKey;
@@ -520,7 +534,7 @@ public class ExcelSectionRenderer implements SectionRenderer, ExcelRenderer {
                 List<?> row = grid.get(r);
                 for (int c = 0; c < Math.min(row.size(), cols); c++) {
                     Object cellValue = row.get(c);
-                    setCellValueAt(sheet, startRef.getRow() + r, startRef.getCol() + c, cellValue == null ? "" : cellValue.toString());
+                    setCellValueAt(sheet, startRef.getRow() + r, startRef.getCol() + c, cellValue == null ? "" : cellValue.toString(), overwrite);
                 }
             }
             return;
@@ -534,20 +548,42 @@ public class ExcelSectionRenderer implements SectionRenderer, ExcelRenderer {
                 for (int c = 0; c < cols; c++) {
                     if (idx >= list.size()) return;
                     Object cellValue = list.get(idx++);
-                    setCellValueAt(sheet, startRef.getRow() + r, startRef.getCol() + c, cellValue == null ? "" : cellValue.toString());
+                    setCellValueAt(sheet, startRef.getRow() + r, startRef.getCol() + c, cellValue == null ? "" : cellValue.toString(), overwrite);
                 }
             }
             return;
         }
 
         // Fallback: single value - set to start cell
-        setCellValueAt(sheet, startRef.getRow(), startRef.getCol(), value.toString());
+        setCellValueAt(sheet, startRef.getRow(), startRef.getCol(), value.toString(), overwrite);
     }
 
-    private void setCellValueAt(Sheet sheet, int rowIndex, int colIndex, String value) {
+    private void setCellValueAt(Sheet sheet, int rowIndex, int colIndex, String value, boolean overwrite) {
         Row row = sheet.getRow(rowIndex);
         if (row == null) row = sheet.createRow(rowIndex);
         Cell cell = row.getCell(colIndex);
+
+        // If this cell is part of a merged region but not the top-left cell,
+        // do nothing.  Writing into the leading cell propagates to the whole
+        // region automatically.  This avoids overwriting merged spans when
+        // filling a grid.
+        if (isPartOfMergedRegion(sheet, rowIndex, colIndex)) {
+            CellRangeAddress merged = getMergedRegion(sheet, rowIndex, colIndex);
+            if (merged != null && (merged.getFirstRow() != rowIndex || merged.getFirstColumn() != colIndex)) {
+                return;
+            }
+        }
+
+        // Preserve template formulas: do not overwrite cells that contain formulas
+        if (cell != null && cell.getCellType() == CellType.FORMULA) {
+            return;
+        }
+
+        // Skip overwriting non-blank cells if overwrite flag is false
+        if (!overwrite && cell != null && cell.getCellType() != CellType.BLANK) {
+            return;
+        }
+
         if (cell == null) cell = row.createCell(colIndex);
 
         try {
@@ -556,6 +592,37 @@ public class ExcelSectionRenderer implements SectionRenderer, ExcelRenderer {
         } catch (NumberFormatException e) {
             cell.setCellValue(value);
         }
+    }
+
+    /**
+     * Helper to determine if a position falls inside any merged region.
+     */
+    private boolean isPartOfMergedRegion(Sheet sheet, int row, int col) {
+        for (CellRangeAddress range : sheet.getMergedRegions()) {
+            if (range.isInRange(row, col)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns the merged region containing the cell, or null if none.
+     */
+    private CellRangeAddress getMergedRegion(Sheet sheet, int row, int col) {
+        for (CellRangeAddress range : sheet.getMergedRegions()) {
+            if (range.isInRange(row, col)) {
+                return range;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Overload for backward compatibility: default to overwrite = true
+     */
+    private void setCellValueAt(Sheet sheet, int rowIndex, int colIndex, String value) {
+        setCellValueAt(sheet, rowIndex, colIndex, value, true);
     }
     
     /**
